@@ -5,12 +5,16 @@ use risc0_zkvm::{
 };
 
 fn main() {
-    let (plaintext, key): (String, [u8; 16]) = env::read();
+    let (plaintext, key, black_list): (String, [u8; 16], Vec<String>) = env::read();
     let sha = *Impl::hash_bytes(&plaintext.as_bytes());
     let encrypted = encrypt_aes(&plaintext, &key);
+
+    let is_black_listed = black_list.iter().any(|word| plaintext.contains(word));
+
     let out = Outputs {
         encrypted,
         hash: sha,
+        is_black_listed,
     };
     env::commit(&out);
 }

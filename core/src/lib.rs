@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 pub struct Outputs {
     pub encrypted: Vec<u8>,
     pub hash: Digest,
+    pub is_black_listed: bool,
 }
 
 const BLOCK_SIZE: usize = 16;
