@@ -3,7 +3,50 @@
 use core::{decrypt_aes, Outputs};
 use hex::encode;
 use methods::{GUEST_CODE_FOR_ZK_PROOF_ELF, GUEST_CODE_FOR_ZK_PROOF_ID};
-use risc0_zkvm::{default_prover, ExecutorEnv};
+use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
+use std::time::Instant;
+
+fn print_header(text: &str) {
+    let len = text.len();
+    let padding = 20 - len - 4;
+    println!("-- {} {}", text, "-".repeat(padding));
+}
+
+fn prove_and_encrypt(plaintext: &str, key: &[u8; 16], black_list: &[String]) -> (Receipt, Outputs) {
+    let start = Instant::now();
+    let env = ExecutorEnv::builder()
+        .write(&(plaintext, key, black_list))
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let prover = default_prover();
+    let prove_info = prover.prove(env, GUEST_CODE_FOR_ZK_PROOF_ELF).unwrap();
+
+    let end = Instant::now();
+    println!("prove time: {:?}", end.duration_since(start));
+
+    let outputs: Outputs = prove_info.receipt.journal.decode().unwrap();
+    (prove_info.receipt, outputs)
+}
+
+fn print_outputs(outputs: Outputs) {
+    println!(
+        "provably encrypted: {:?}",
+        encode(outputs.encrypted.as_slice())
+    );
+    println!("provably is_black_listed: {:?}", outputs.is_black_listed);
+}
+
+fn verify_receipt(receipt: Receipt) {
+    receipt.verify(GUEST_CODE_FOR_ZK_PROOF_ID).unwrap();
+    println!("Receipt verified...");
+}
+
+fn decrypt_outputs(key: &[u8; 16], outputs: Outputs) {
+    let decrypted = decrypt_aes(key, outputs.encrypted);
+    println!("decrypted: {:?}", decrypted);
+}
 
 fn main() {
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
@@ -11,48 +54,62 @@ fn main() {
         .with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env())
         .init();
 
-    println!("Preparing to prove...");
+    {
+        print_header("First test");
+        let plaintext = "Hello, world!";
+        let key = [0u8; 16];
+        let black_list = vec!["world".to_string()];
+        // extract the receipt.
+        let (receipt, outputs) = prove_and_encrypt(plaintext, &key, &black_list);
+        verify_receipt(receipt);
+        print_outputs(outputs.clone());
+        decrypt_outputs(&key, outputs.clone());
+        println!("----------------------------------");
+        println!();
+    }
 
-    // For example:
-    let plaintext = "Hello, world!";
-    let key = [0u8; 16];
-    let black_list = vec!["world".to_string()];
+    {
+        print_header("Second test");
+        let plaintext = "Hello, world!";
+        let key = [0u8; 16];
+        let black_list = vec!["bonjour".to_string()];
 
-    let env = ExecutorEnv::builder()
-        .write(&(plaintext, key, black_list))
-        .unwrap()
-        .build()
-        .unwrap();
+        // extract the receipt.
+        let (receipt, outputs) = prove_and_encrypt(plaintext, &key, &black_list);
+        verify_receipt(receipt);
+        print_outputs(outputs.clone());
+        decrypt_outputs(&key, outputs.clone());
+        println!("----------------------------------");
+        println!();
+    }
 
-    // Obtain the default prover.
-    let prover = default_prover();
+    {
+        print_header("Third test");
+        let plaintext =
+            "Abstract. A purely peer-to-peer version of electronic cash would allow online
+payments to be sent directly from one party to another without going through a
+financial institution. Digital signatures provide part of the solution, but the main
+benefits are lost if a trusted third party is still required to prevent double-spending.
+We propose a solution to the double-spending problem using a peer-to-peer network.
+The network timestamps transactions by hashing them into an ongoing chain of
+hash-based proof-of-work, forming a record that cannot be changed without redoing
+the proof-of-work. The longest chain not only serves as proof of the sequence of
+events witnessed, but proof that it came from the largest pool of CPU power. As
+long as a majority of CPU power is controlled by nodes that are not cooperating to
+attack the network, they'll generate the longest chain and outpace attackers. The
+network itself requires minimal structure. Messages are broadcast on a best effort
+basis, and nodes can leave and rejoin the network at will, accepting the longest
+proof-of-work chain as proof of what happened while they were gone.
+";
+        let key = [0u8; 16];
+        let black_list = vec!["bitcoin".to_string()];
 
-    println!("Proving...");
-
-    // Proof information by proving the specified ELF binary.
-    // This struct contains the receipt along with statistics about execution of the guest
-    let prove_info = prover.prove(env, GUEST_CODE_FOR_ZK_PROOF_ELF).unwrap();
-
-    println!("Proving done...");
-
-    // extract the receipt.
-    let receipt = prove_info.receipt;
-
-    let outputs: Outputs = receipt.journal.decode().unwrap();
-
-    println!();
-    println!("  {:?}", outputs.hash);
-    println!(
-        "provably encrypted: {:?}",
-        encode(outputs.encrypted.as_slice())
-    );
-    println!("provably is_black_listed: {:?}", outputs.is_black_listed);
-
-    println!("Receipt journal decoded...");
-
-    // The receipt was verified at the end of proving, but the below code is an
-    // example of how someone else could verify this receipt.
-    receipt.verify(GUEST_CODE_FOR_ZK_PROOF_ID).unwrap();
-
-    println!("Receipt verified...");
+        // extract the receipt.
+        let (receipt, outputs) = prove_and_encrypt(plaintext, &key, &black_list);
+        verify_receipt(receipt);
+        print_outputs(outputs.clone());
+        decrypt_outputs(&key, outputs.clone());
+        println!("----------------------------------");
+        println!();
+    }
 }
