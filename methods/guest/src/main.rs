@@ -1,17 +1,15 @@
-use core::Outputs;
-use json::parse;
+use core::{encrypt_aes, Outputs};
 use risc0_zkvm::{
     guest::env,
     sha::{Impl, Sha256},
 };
 
 fn main() {
-    let data: String = env::read();
-    let sha = *Impl::hash_bytes(&data.as_bytes());
-    let data = parse(&data).unwrap();
-    let proven_val = data["critical_data"].as_u32().unwrap();
+    let (plaintext, key): (String, [u8; 16]) = env::read();
+    let sha = *Impl::hash_bytes(&plaintext.as_bytes());
+    let encrypted = encrypt_aes(&plaintext, &key);
     let out = Outputs {
-        data: proven_val,
+        encrypted,
         hash: sha,
     };
     env::commit(&out);
